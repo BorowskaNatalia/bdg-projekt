@@ -76,3 +76,13 @@ Project structure
 
 Notes
 bgd_loader is a one-shot container that loads data/raw/sleep.csv into PostgreSQL as sleep_raw.
+
+## Task 2.1 - MinIO (Bronze/Silver storage)
+- MinIO Console: http://localhost:9001
+- Bucket is created automatically by `minio-init` (bucket: bgd)
+
+Run:
+```bash
+docker compose up -d minio minio-init
+docker logs bgd_minio_init --tail 50
+```
