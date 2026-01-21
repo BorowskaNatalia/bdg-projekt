@@ -135,6 +135,23 @@ services:
       - "${MINIO_CONSOLE_PORT}:9001"
     volumes:
       - miniodata:/data
+  spark:
+    image: apache/spark:3.5.1-python3
+    container_name: bgd_spark
+    environment:
+      - TZ=${TZ}
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - MINIO_BUCKET=${MINIO_BUCKET}
+      - SPARK_SUBMIT_OPTS=-Divy.cache.dir=/tmp -Divy.home=/tmp
+    volumes:
+      - ./spark_jobs:/opt/spark_jobs
+    depends_on:
+      - minio
+    command: ["bash", "-lc", "sleep infinity"]
+
+
 
 volumes:
   postgres_meta_data:
