@@ -1,0 +1,109 @@
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.10.2-python3.11
+  env_file: .env
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres-meta:5432/airflow
+    _PIP_ADDITIONAL_REQUIREMENTS: |
+      pandas sqlalchemy psycopg2-binary python-dotenv
+    # Dostęp do BGD Postgresa
+    POSTGRES_HOST: bgd_postgres
+    POSTGRES_PORT: "5432"
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    POSTGRES_DB: ${POSTGRES_DB}
+    SLEEP_EVENTS_CSV: /opt/airflow/data/processed/sleep_events.csv
+  user: "${AIRFLOW_UID:-50000}:0"
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+    - ./scripts:/opt/airflow/scripts
+    - ./data:/opt/airflow/data
+
+
+
+services:
+
+  bgd-loader:
+    image: python:3.11-slim
+    container_name: bgd_loader
+    depends_on:
+      bgd_postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: bgd_postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      SLEEP_CSV_PATH: /app/data/raw/sleep.csv
+      # FORCE_RELOAD: "1"  # odkomentuj jak chcesz wymusić przeładowanie
+    volumes:
+      - ./scripts:/app/scripts
+      - ./data:/app/data
+    command: >
+      bash -lc "pip install --no-cache-dir pandas sqlalchemy psycopg2-binary python-dotenv
+      && python /app/scripts/load_sleep_to_postgres.py"
+    restart: "no"
+  postgres-meta:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 10
+    volumes:
+      - postgres_meta_data:/var/lib/postgresql/data
+  
+  bgd_postgres:
+    image: postgres:16
+    container_name: bgd_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TZ: ${TZ}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - bgd_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - >
+        airflow db init &&
+        airflow users create --username airflow --password airflow
+        --firstname Admin --lastname User --role Admin --email admin@example.com
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+
+  airflow-triggerer:
+    <<: *airflow-common
+    command: triggerer
+
+volumes:
+  postgres_meta_data:
+  bgd_pgdata:
